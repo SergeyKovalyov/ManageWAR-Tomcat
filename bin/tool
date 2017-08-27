@@ -1,0 +1,120 @@
+#!/usr/bin/env perl
+
+use common::sense;
+
+use Getopt::Long;
+use Pod::Usage;
+use ManageWAR::Tomcat;
+
+
+
+sub process_command_line {
+	pod2usage(2) unless @ARGV;
+	GetOptions(
+		'config=s'      => \$cfg{config},
+		'action=s'      => \$cfg{action},
+		'hostname=s'    => \$cfg{hostname},
+		'user=s'        => \$cfg{user},
+		'password=s'    => \$cfg{password},
+		'app_path=s'    => \$cfg{app_path},
+		'application=s' => \$cfg{application},
+		help            => sub { pod2usage(1); },
+	) or pod2usage(2);
+	pod2usage(
+		-msg     => "Can not parse arguments: " . (join ', ', @ARGV),
+		-exitval => 2
+	) if @ARGV;
+}
+
+
+
+process_command_line();
+
+if ($cfg{action} eq 'save_cfg') {
+	save_cfg();
+	exit;
+} elsif ($cfg{action} eq 'remove_cfg'){
+	remove_cfg();
+	exit;
+}
+
+read_cfg() if $cfg{config};
+if ($cfg{action} eq 'deploy') {
+	deploy();
+} elsif ($cfg{action} eq 'undeploy') {
+	undeploy();
+} elsif ($cfg{action} eq 'start') {
+	start();
+} elsif ($cfg{action} eq 'check') {
+	check();
+} elsif ($cfg{action} eq 'stop') {
+	stop();
+} else {
+	die "no action to perform";
+}
+
+
+
+=head1 NAME
+
+tool - manages WAR's for Tomcat
+
+=head1 SYNOPSIS
+
+tool [options]
+
+Options:
+
+    --action                    
+          action is one of:
+            save_cfg
+            remove_cfg
+            deploy
+            undeploy
+            check
+            start
+            stop
+
+    --config=host1.cfg
+        configuation file used with user/password/host/etc. saved
+
+    --application=app.war
+        application to deploy
+	
+    --app_path=path
+    	context path for application to undeploy/check/start/stop
+
+    --hostname=host_name
+
+    --user=user_name
+
+    --password=secret_password
+
+    --help          
+        Show this message
+
+
+Examples:
+
+    tool --action save_cfg --config host1.cfg \
+        --hostname host_name1 --name user_name --password secret_password
+
+    tool --action deploy --config host1.cfg --application hello-world.war
+
+=head1 DESCRIPTION
+
+C<tool> is a command-line interface to L<ManageWAR::Tomcat>.
+
+=head1 CONFIGURATION
+
+The configuration file is just a list of names and values, separated by
+colons. Values that take lists are just space separated. A sample
+configuration file might read:
+
+  user: user_name
+  password: secret_password
+  hostname: host_name1
+  app_path: default_path
+
+=cut
+
