@@ -1,5 +1,7 @@
 Revision history for ManageWAR-Tomcat
 
+0.02	No autodie, no global vars, added checks for file operations.   
+
 0.01    Date/time
         First version, released on an unsuspecting world.
 

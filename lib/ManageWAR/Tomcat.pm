@@ -2,66 +2,83 @@ package ManageWAR::Tomcat;
 
 use strict;
 use warnings;
-use autodie;
 
 use LWP::UserAgent;
 use HTTP::Request::Common;
 use Exporter;
 
 our @ISA = qw/Exporter/;
-our @EXPORT = qw/%cfg save_cfg remove_cfg read_cfg deploy undeploy start check stop/;
+our @EXPORT = qw/save_cfg remove_cfg read_cfg deploy undeploy start check stop/;
 
-our $VERSION = '0.01';
-our %cfg;
-our $ua = new LWP::UserAgent;
+our $VERSION = '0.02';
 
 
 
 sub save_cfg {
+	my (%cfg) = @_;
+
 	die "configuration name is not set" unless $cfg{config};
-	open my $fh, '>', $cfg{config};
+	open my $fh, '>', $cfg{config} or die "can not open file '$cfg{config}': $!";
 	for my $p (qw/user password hostname app_path lang/) {
 		print $fh "$p: $cfg{$p}\n" if $cfg{$p};
 	}
+	close $fh or die "error during close file '$cfg{config}': $!";
+
+	return 1;
 }
 
 
 
 sub remove_cfg {
+	my (%cfg) = @_;
+
 	die "configuration file '$cfg{config}' not found" unless -f $cfg{config};
-	unlink $cfg{config};
+	unlink $cfg{config} or die "error during unlink file '$cfg{config}': $!";
+
+	return 1;
 }
 
 
 
 sub read_cfg {
-	die "configuration file '$cfg{config}' not found" unless -f $cfg{config};
-	open my $fh, '<', $cfg{config};
+	my (%cfg) = @_;
+
+	open my $fh, '<', $cfg{config} or die "can not open file '$cfg{config}': $!";
 	while (<$fh>) {
 		chomp;
 		next unless /^(\w+):\s*(.+)/;
 		# command line arguments override ones from a config file
 		$cfg{$1} = $2 unless $cfg{$1};
 	}
+	close $fh or die "error durinng closing file '$cfg{config}': $!";
+
+	return %cfg;
 }
 
 
 
 sub _check_params {
+	my (%cfg) = @_;
+
 	if ($cfg{action} eq 'deploy') {
-		die "no application to deploy" unless $cfg{application} and -f $cfg{application};
+		die "no application to deploy" unless $cfg{application};
 	} else {
 		die "no application path" unless $cfg{app_path};
 	}
 	die "no hostname" unless $cfg{hostname};
-	die "no user or no password" unless $cfg{user} and $cfg{password};
+	die "no user or no password" if $cfg{action} ne 'check' and (not $cfg{user} or not $cfg{password});
+
+	return 1;
 }
 
 
 
 sub check {
-	die "no application path" unless $cfg{app_path};
+	my (%cfg) = @_;
 
+	_check_params %cfg;
+
+	my $ua = new LWP::UserAgent;
 	my $request = GET "http://$cfg{hostname}/$cfg{app_path}";
 	my $response = $ua->request($request);
 	if ($response->is_error) {
@@ -69,49 +86,75 @@ sub check {
 	} else {
 		print "OK - Application at context path /$cfg{app_path} is available\n";
 	}
+
+	return 1;
 }
 
 
 
 sub deploy {
-	_check_params();
+	my (%cfg) = @_;
 
-	my $path;
-	if ($cfg{app_path}) {
-		$path = $cfg{app_path};
-	} else {
-		$path = $cfg{application};
-		$path =~ s/\.war$//i;
+	unless ($cfg{app_path}) {
+		$cfg{app_path} = $cfg{application};
+		$cfg{app_path} =~ s/(.*\/)?(.+)\.war$/$2/i;
 	}
-	my $request = PUT 'http://' . $cfg{hostname} . '/manager/text/deploy?path=/' . $path,
-		Content => do { open my $fh, '<', $cfg{application}; local $/; <$fh> };
+
+	_check_params %cfg;
+
+	my $ua = new LWP::UserAgent;
+	my $request = PUT "http://$cfg{hostname}/manager/text/deploy?path=/$cfg{app_path}",
+		Content => do {
+			open my $fh, '<', $cfg{application} or die "can not open file '$cfg{application}': $!";
+			local $/;
+			my $content = <$fh>;
+			close $fh or die "error during close file '$cfg{applocation}': $!";
+			$content;
+		};
 	$request->authorization_basic($cfg{user}, $cfg{password});
 	my $response = $ua->request($request);
 	print $response->content;
-	check();
+	$cfg{action} = 'check';
+	check %cfg;
+
+	return 1;
 }
 
 
 
 sub _actions {
-	_check_params();
+	my (%cfg) = @_;
 
+	_check_params %cfg;
+
+	my $ua = new LWP::UserAgent;
 	my $request = GET "http://$cfg{hostname}/manager/text/$cfg{action}?path=/$cfg{app_path}";
 	$request->authorization_basic($cfg{user}, $cfg{password});
 	my $response = $ua->request($request);
 	print $response->content;
+
+	return 1;
 }
 
 sub undeploy {
-	_actions();
+	my (%cfg) = @_;
+	$cfg{action} = 'undeploy';
+	_actions %cfg;
+	return 1;
 }
 
 sub start {
-	_actions();
+	my (%cfg) = @_;
+	$cfg{action} = 'start';
+	_actions %cfg;
+	return 1;
 }
 
 sub stop {
-	_actions();
+	my (%cfg) = @_;
+	$cfg{action} = 'stop';
+	_actions %cfg;
+	return 1;
 }
 
 
@@ -141,27 +184,41 @@ Exports action functions: process_cfg, save_cfg, remove_cfg, deploy, undeploy, s
 
 =head1 SUBROUTINES/METHODS
 
-=head2 process_cfg
+=over
+
+=item process_cfg
 
 Processes configuration (from a file or command line arguments)
 
-=head2 save_cfg
+=item save_cfg
 
 Saves current configuration to a file
 
-=head2 remove_cfg
+=item remove_cfg
 
 Removes current configuration
 
-=head2 deploy
+=item deploy
 
-=head2 undeploy
+Deploy the application
 
-=head2 start
+=item undeploy
 
-=head2 check
+Undeploy the application
 
-=head2 stop
+=item start
+
+Start the application
+
+=item check
+
+Check if application's start page responds
+
+=item stop
+
+Stop the application
+
+=back
 
 =head1 AUTHOR
 

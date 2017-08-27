@@ -1,6 +1,7 @@
 #!/usr/bin/env perl
 
-use common::sense;
+use strict;
+use warnings;
 
 use Getopt::Long;
 use Pod::Usage;
@@ -10,6 +11,8 @@ use ManageWAR::Tomcat;
 
 sub process_command_line {
 	pod2usage(2) unless @ARGV;
+
+	my %cfg;
 	GetOptions(
 		'config=s'      => \$cfg{config},
 		'action=s'      => \$cfg{action},
@@ -24,34 +27,44 @@ sub process_command_line {
 		-msg     => "Can not parse arguments: " . (join ', ', @ARGV),
 		-exitval => 2
 	) if @ARGV;
+
+	return %cfg;
 }
 
 
 
-process_command_line();
+sub run {
+	my %cfg = process_command_line();
+	die "no action specified" unless $cfg{action};
 
-if ($cfg{action} eq 'save_cfg') {
-	save_cfg();
-	exit;
-} elsif ($cfg{action} eq 'remove_cfg'){
-	remove_cfg();
-	exit;
+	if ($cfg{action} eq 'save_cfg') {
+		save_cfg %cfg;
+		exit;
+	} elsif ($cfg{action} eq 'remove_cfg'){
+		remove_cfg %cfg;
+		exit;
+	}
+
+	%cfg = read_cfg %cfg if $cfg{config};
+	if ($cfg{action} eq 'deploy') {
+		deploy %cfg;
+	} elsif ($cfg{action} eq 'undeploy') {
+		undeploy %cfg;
+	} elsif ($cfg{action} eq 'start') {
+		start %cfg;
+	} elsif ($cfg{action} eq 'check') {
+		check %cfg;
+	} elsif ($cfg{action} eq 'stop') {
+		stop %cfg;
+	} else {
+		die "no action to perform";
+	}
+
+	return 1;
 }
 
-read_cfg() if $cfg{config};
-if ($cfg{action} eq 'deploy') {
-	deploy();
-} elsif ($cfg{action} eq 'undeploy') {
-	undeploy();
-} elsif ($cfg{action} eq 'start') {
-	start();
-} elsif ($cfg{action} eq 'check') {
-	check();
-} elsif ($cfg{action} eq 'stop') {
-	stop();
-} else {
-	die "no action to perform";
-}
+
+run();
 
 
 
@@ -66,7 +79,7 @@ tool [options]
 Options:
 
     --action                    
-          action is one of:
+          action (mandatory) is one of:
             save_cfg
             remove_cfg
             deploy
